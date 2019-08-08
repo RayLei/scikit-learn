@@ -274,7 +274,8 @@ class LatentDirichletAllocation(BaseEstimator, TransformerMixin):
 
     """
 
-    def __init__(self, n_sources=1, n_components=10, doc_topic_prior=None,
+    def __init__(self, n_sources=1, n_shared=0,
+                 n_components=10, doc_topic_prior=None,
                  topic_word_prior=None, learning_method='batch',
                  learning_decay=.7, learning_offset=10., max_iter=10,
                  batch_size=128, evaluate_every=-1, total_samples=1e6,
@@ -347,7 +348,8 @@ class LatentDirichletAllocation(BaseEstimator, TransformerMixin):
         self.exp_dirichlet_component_ = np.exp(
             _dirichlet_expectation_2d(self.components_))
 
-    def _e_step(self, X, cal_sstats, random_init, parallel=None):
+    def _e_step(self, X, exp_dirichlet_component_, doc_topic_prior_,
+                cal_sstats, random_init, parallel=None):
         """E-step in EM update.
 
         Parameters
@@ -387,8 +389,8 @@ class LatentDirichletAllocation(BaseEstimator, TransformerMixin):
                                 self.verbose - 1))
         results = parallel(
             delayed(_update_doc_distribution)(X[idx_slice, :],
-                                              self.exp_dirichlet_component_,
-                                              self.doc_topic_prior_,
+                                              exp_dirichlet_component_,
+                                              doc_topic_prior_,
                                               self.max_doc_update_iter,
                                               self.mean_change_tol, cal_sstats,
                                               random_state)
@@ -436,26 +438,33 @@ class LatentDirichletAllocation(BaseEstimator, TransformerMixin):
         doc_topic_distr : array, shape=(n_samples, n_components)
             Unnormalized document topic distribution.
         """
-
+        _lt, suff_stats_lt = [], []
         # E-step
         for X in X_list:
             _, suff_stats = self._e_step(X, cal_sstats=True, random_init=True,
-                                        parallel=parallel)
+                                         parallel=parallel)
+            _lt.append(_)
+            suff_stats_lt.append(suff_stats)
+            suff_stat_4_shared += suff_stats[:k0, ]
 
         # M-step
         if batch_update:
-            self.components_ = self.topic_word_prior_ + suff_stats
-        else:
-            # online update
-            # In the literature, the weight is `rho`
-            weight = np.power(self.learning_offset + self.n_batch_iter_,
-                              -self.learning_decay)
-            doc_ratio = float(total_samples) / X.shape[0]
-            self.components_ *= (1 - weight)
-            self.components_ += (weight * (self.topic_word_prior_
-                                           + doc_ratio * suff_stats))
+            for i in np.arange(self.n_sources):
+                self.components_[i][:self.n_shared, ] = self.topic_word_prior_\
+                    + suff_stats_4_shared
+                self.components_[i][self.n_shared:, ] = self.topic_word_prior_\
+                    + suff_stats_lt[i][self.n_shared:, ]
+        # else:
+        #     # online update
+        #     # In the literature, the weight is `rho`
+        #     weight = np.power(self.learning_offset + self.n_batch_iter_,
+        #                       -self.learning_decay)
+        #     doc_ratio = float(total_samples) / X.shape[0]
+        #     self.components_ *= (1 - weight)
+        #     self.components_ += (weight * (self.topic_word_prior_
+        #                                    + doc_ratio * suff_stats))
 
-        # update `component_` related variables
+        # update `component_` related variables ---- need to change here.
         self.exp_dirichlet_component_ = np.exp(
             _dirichlet_expectation_2d(self.components_))
         self.n_batch_iter_ += 1
