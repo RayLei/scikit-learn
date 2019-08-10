@@ -17,6 +17,7 @@ from .dict_learning import (dict_learning, dict_learning_online, sparse_encode,
 from .factor_analysis import FactorAnalysis
 from ..utils.extmath import randomized_svd
 from .online_lda import LatentDirichletAllocation
+from .shared_lda import SharedLatentDirichletAllocation
 
 __all__ = ['DictionaryLearning',
            'FastICA',
@@ -36,4 +37,5 @@ __all__ = ['DictionaryLearning',
            'sparse_encode',
            'FactorAnalysis',
            'TruncatedSVD',
-           'LatentDirichletAllocation']
+           'LatentDirichletAllocation',
+           'SharedLatentDirichletAllocation']
